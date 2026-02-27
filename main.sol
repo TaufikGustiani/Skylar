@@ -423,3 +423,88 @@ contract Skylar is ReentrancyGuard, Ownable {
     ) {
         uint256 n = intentIds.length;
         if (n > 200) revert SKY_BoundsInvalid();
+        controllers = new address[](n);
+        sides = new uint8[](n);
+        amountsWei = new uint256[](n);
+        limitPricesWei = new uint256[](n);
+        executedAmountsWei = new uint256[](n);
+        atBlocks = new uint256[](n);
+        executedFlags = new bool[](n);
+        cancelledFlags = new bool[](n);
+        for (uint256 i = 0; i < n; i++) {
+            AgentIntent storage i0 = intents[intentIds[i]];
+            if (i0.atBlock == 0) revert SKY_IntentNotFound();
+            controllers[i] = i0.controller;
+            sides[i] = i0.side;
+            amountsWei[i] = i0.amountWei;
+            limitPricesWei[i] = i0.limitPriceWei;
+            executedAmountsWei[i] = i0.executedAmountWei;
+            atBlocks[i] = i0.atBlock;
+            executedFlags[i] = i0.executed;
+            cancelledFlags[i] = i0.cancelled;
+        }
+        return (controllers, sides, amountsWei, limitPricesWei, executedAmountsWei, atBlocks, executedFlags, cancelledFlags);
+    }
+
+    function volumeBySide() external view returns (uint256 buyVolumeWei, uint256 sellVolumeWei) {
+        for (uint256 i = 0; i < _allIntentIds.length; i++) {
+            AgentIntent storage i0 = intents[_allIntentIds[i]];
+            if (i0.side == SKY_SIDE_BUY) buyVolumeWei += i0.executedAmountWei;
+            else if (i0.side == SKY_SIDE_SELL) sellVolumeWei += i0.executedAmountWei;
+        }
+        return (buyVolumeWei, sellVolumeWei);
+    }
+
+    function intentIdsPaginated(uint256 offset, uint256 limit) external view returns (uint256[] memory ids) {
+        uint256 total = _allIntentIds.length;
+        if (offset >= total) return new uint256[](0);
+        if (limit > total - offset) limit = total - offset;
+        ids = new uint256[](limit);
+        for (uint256 i = 0; i < limit; i++) {
+            ids[i] = _allIntentIds[offset + i];
+        }
+        return ids;
+    }
+
+    function treasuryInfo() external view returns (uint256 balance, address recipient) {
+        return (treasuryBalance, skyTreasury);
+    }
+
+    function constantsForFrontend() external pure returns (
+        uint256 bpsDenom,
+        uint256 sideBuy,
+        uint256 sideSell,
+        uint256 maxIntents
+    ) {
+        return (SKY_BPS_DENOM, SKY_SIDE_BUY, SKY_SIDE_SELL, SKY_MAX_INTENTS);
+    }
+
+    function dashboardSummary() external view returns (
+        uint256 totalIntents,
+        uint256 executedCount,
+        uint256 cancelledCount,
+        uint256 pendingCount,
+        uint256 totalVolumeExecutedWei,
+        uint256 treasuryBal,
+        bool paused
+    ) {
+        totalIntents = _allIntentIds.length;
+        for (uint256 i = 0; i < totalIntents; i++) {
+            AgentIntent storage i0 = intents[_allIntentIds[i]];
+            if (i0.executed) {
+                executedCount++;
+                totalVolumeExecutedWei += i0.executedAmountWei;
+            }
+            else if (i0.cancelled) cancelledCount++;
+            else pendingCount++;
+        }
+        treasuryBal = treasuryBalance;
+        paused = skyPaused;
+        return (totalIntents, executedCount, cancelledCount, pendingCount, totalVolumeExecutedWei, treasuryBal, paused);
+    }
+
+    function getIntentDetails(uint256 intentId) external view returns (
+        address controller,
+        uint8 side,
+        uint256 amountWei,
+        uint256 limitPriceWei,
