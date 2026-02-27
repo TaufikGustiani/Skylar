@@ -338,3 +338,88 @@ contract Skylar is ReentrancyGuard, Ownable {
             ids[i] = _allIntentIds[total - 1 - i];
         }
         return ids;
+    }
+
+    function getIntentRange(uint256 fromIndex, uint256 toIndex) external view returns (
+        uint256[] memory ids,
+        address[] memory controllers,
+        uint8[] memory sides,
+        uint256[] memory amountsWei,
+        uint256[] memory atBlocks
+    ) {
+        uint256 n = _allIntentIds.length;
+        if (fromIndex >= n) return (new uint256[](0), new address[](0), new uint8[](0), new uint256[](0), new uint256[](0));
+        if (toIndex >= n) toIndex = n - 1;
+        if (fromIndex > toIndex) return (new uint256[](0), new address[](0), new uint8[](0), new uint256[](0), new uint256[](0));
+        uint256 len = toIndex - fromIndex + 1;
+        ids = new uint256[](len);
+        controllers = new address[](len);
+        sides = new uint8[](len);
+        amountsWei = new uint256[](len);
+        atBlocks = new uint256[](len);
+        for (uint256 i = 0; i < len; i++) {
+            uint256 id = _allIntentIds[fromIndex + i];
+            ids[i] = id;
+            controllers[i] = intents[id].controller;
+            sides[i] = intents[id].side;
+            amountsWei[i] = intents[id].amountWei;
+            atBlocks[i] = intents[id].atBlock;
+        }
+        return (ids, controllers, sides, amountsWei, atBlocks);
+    }
+
+    function countExecuted() external view returns (uint256 count) {
+        for (uint256 i = 0; i < _allIntentIds.length; i++) {
+            if (intents[_allIntentIds[i]].executed) count++;
+        }
+        return count;
+    }
+
+    function countCancelled() external view returns (uint256 count) {
+        for (uint256 i = 0; i < _allIntentIds.length; i++) {
+            if (intents[_allIntentIds[i]].cancelled) count++;
+        }
+        return count;
+    }
+
+    function countPending() external view returns (uint256 count) {
+        for (uint256 i = 0; i < _allIntentIds.length; i++) {
+            AgentIntent storage i0 = intents[_allIntentIds[i]];
+            if (!i0.executed && !i0.cancelled) count++;
+        }
+        return count;
+    }
+
+    function totalVolumeWei() external view returns (uint256 total) {
+        for (uint256 i = 0; i < _allIntentIds.length; i++) {
+            total += intents[_allIntentIds[i]].executedAmountWei;
+        }
+        return total;
+    }
+
+    function isIntentExecutable(uint256 intentId) external view returns (bool) {
+        AgentIntent storage i0 = intents[intentId];
+        if (i0.atBlock == 0 || i0.executed || i0.cancelled) return false;
+        return true;
+    }
+
+    function domainSalt() external view returns (bytes32) {
+        return agentDomain;
+    }
+
+    function version() external pure returns (string memory) {
+        return "Skylar.1.0.0";
+    }
+
+    function getIntentsBulk(uint256[] calldata intentIds) external view returns (
+        address[] memory controllers,
+        uint8[] memory sides,
+        uint256[] memory amountsWei,
+        uint256[] memory limitPricesWei,
+        uint256[] memory executedAmountsWei,
+        uint256[] memory atBlocks,
+        bool[] memory executedFlags,
+        bool[] memory cancelledFlags
+    ) {
+        uint256 n = intentIds.length;
+        if (n > 200) revert SKY_BoundsInvalid();
