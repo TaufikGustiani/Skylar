@@ -508,3 +508,88 @@ contract Skylar is ReentrancyGuard, Ownable {
         uint8 side,
         uint256 amountWei,
         uint256 limitPriceWei,
+        uint256 executedAmountWei,
+        bytes32 symbolHash,
+        uint256 atBlock,
+        bool executed,
+        bool cancelled,
+        bool executable
+    ) {
+        AgentIntent storage i0 = intents[intentId];
+        if (i0.atBlock == 0) revert SKY_IntentNotFound();
+        executable = !i0.executed && !i0.cancelled;
+        return (
+            i0.controller,
+            i0.side,
+            i0.amountWei,
+            i0.limitPriceWei,
+            i0.executedAmountWei,
+            i0.symbolHash,
+            i0.atBlock,
+            i0.executed,
+            i0.cancelled,
+            executable
+        );
+    }
+
+    function countByController(address controller) external view returns (uint256) {
+        return _intentIdsByController[controller].length;
+    }
+
+    function countExecutedByController(address controller) external view returns (uint256 count) {
+        uint256[] storage ids = _intentIdsByController[controller];
+        for (uint256 i = 0; i < ids.length; i++) {
+            if (intents[ids[i]].executed) count++;
+        }
+        return count;
+    }
+
+    function totalFeeCollected() external view returns (uint256) {
+        return treasuryBalance;
+    }
+
+    function deployInfo() external view returns (uint256 blockNum, bytes32 domain) {
+        return (deployBlock, agentDomain);
+    }
+
+    function getExecution(uint256 intentId) external view returns (address keeper, uint256 executedAmountWei, uint256 avgPriceWei, uint256 atBlock) {
+        ExecutionRecord storage r = _executionByIntentId[intentId];
+        if (r.atBlock == 0) revert SKY_IntentNotFound();
+        return (r.keeper, r.executedAmountWei, r.avgPriceWei, r.atBlock);
+    }
+
+    function getIntentIdsBySymbol(bytes32 symbolHash) external view returns (uint256[] memory) {
+        return _intentIdsBySymbol[symbolHash];
+    }
+
+    function volumeBySymbol(bytes32 symbolHash) external view returns (uint256 volumeWei) {
+        uint256[] storage ids = _intentIdsBySymbol[symbolHash];
+        for (uint256 i = 0; i < ids.length; i++) {
+            volumeWei += intents[ids[i]].executedAmountWei;
+        }
+        return volumeWei;
+    }
+
+    function countBySymbol(bytes32 symbolHash) external view returns (uint256) {
+        return _intentIdsBySymbol[symbolHash].length;
+    }
+
+    function getRecentExecutions(uint256 limit) external view returns (
+        uint256[] memory intentIds,
+        address[] memory keepers,
+        uint256[] memory amountsWei,
+        uint256[] memory pricesWei,
+        uint256[] memory atBlocks
+    ) {
+        uint256 n = _executionBlockOrder.length;
+        if (limit > n) limit = n;
+        if (limit == 0) return (new uint256[](0), new address[](0), new uint256[](0), new uint256[](0), new uint256[](0));
+        intentIds = new uint256[](limit);
+        keepers = new address[](limit);
+        amountsWei = new uint256[](limit);
+        pricesWei = new uint256[](limit);
+        atBlocks = new uint256[](limit);
+        for (uint256 i = 0; i < limit; i++) {
+            uint256 id = _executionBlockOrder[n - 1 - i];
+            intentIds[i] = id;
+            ExecutionRecord storage r = _executionByIntentId[id];
