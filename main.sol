@@ -83,3 +83,88 @@ contract Skylar is ReentrancyGuard, Ownable {
     }
 
     mapping(uint256 => AgentIntent) public intents;
+    mapping(address => uint256[]) private _intentIdsByController;
+    mapping(bytes32 => uint256[]) private _intentIdsBySymbol;
+    uint256[] private _allIntentIds;
+
+    struct ExecutionRecord {
+        uint256 intentId;
+        address keeper;
+        uint256 executedAmountWei;
+        uint256 avgPriceWei;
+        uint256 atBlock;
+    }
+    mapping(uint256 => ExecutionRecord) private _executionByIntentId;
+    uint256[] private _executionBlockOrder;
+
+    modifier whenNotPaused() {
+        if (skyPaused) revert SKY_Paused();
+        _;
+    }
+
+    modifier onlyController() {
+        if (msg.sender != skyController && msg.sender != owner()) revert SKY_NotController();
+        _;
+    }
+
+    modifier onlyKeeper() {
+        if (msg.sender != skyKeeper && msg.sender != owner()) revert SKY_NotKeeper();
+        _;
+    }
+
+    constructor() Ownable(msg.sender) {
+        skyTreasury = address(0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed);
+        skyController = address(0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359);
+        skyKeeper = address(0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB);
+        deployBlock = block.number;
+        agentDomain = keccak256("Skylar.agent");
+        feeBps = 25;
+        minExecutionWei = 1e15;
+        maxExecutionWei = 1000 ether;
+    }
+
+    function setPaused(bool paused) external onlyOwner {
+        skyPaused = paused;
+        emit AgentPaused(paused, block.number);
+    }
+
+    function setController(address newController) external onlyOwner {
+        if (newController == address(0)) revert SKY_ZeroAddress();
+        address prev = skyController;
+        skyController = newController;
+        emit ControllerSet(prev, newController);
+    }
+
+    function setKeeper(address newKeeper) external onlyOwner {
+        if (newKeeper == address(0)) revert SKY_ZeroAddress();
+        address prev = skyKeeper;
+        skyKeeper = newKeeper;
+        emit KeeperSet(prev, newKeeper);
+    }
+
+    function setExecutionBounds(uint256 minWei, uint256 maxWei) external onlyOwner {
+        if (minWei > maxWei) revert SKY_BoundsInvalid();
+        minExecutionWei = minWei;
+        maxExecutionWei = maxWei;
+        emit ExecutionBoundsSet(minWei, maxWei, block.number);
+    }
+
+    function setFeeBps(uint256 newFeeBps) external onlyOwner {
+        if (newFeeBps > SKY_BPS_DENOM) revert SKY_BoundsInvalid();
+        uint256 prev = feeBps;
+        feeBps = newFeeBps;
+        emit FeeBpsSet(prev, newFeeBps, block.number);
+    }
+
+    function submitIntent(
+        uint8 side,
+        uint256 amountWei,
+        uint256 limitPriceWei,
+        bytes32 symbolHash
+    ) external payable onlyController whenNotPaused returns (uint256 intentId) {
+        if (side != SKY_SIDE_BUY && side != SKY_SIDE_SELL) revert SKY_InvalidSide();
+        if (amountWei == 0) revert SKY_ZeroAmount();
+        if (amountWei < minExecutionWei || amountWei > maxExecutionWei) revert SKY_AmountOutOfBounds();
+        if (_allIntentIds.length >= SKY_MAX_INTENTS) revert SKY_MaxIntentsReached();
+
+        uint256 feeWei = (amountWei * feeBps) / SKY_BPS_DENOM;
