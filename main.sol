@@ -168,3 +168,88 @@ contract Skylar is ReentrancyGuard, Ownable {
         if (_allIntentIds.length >= SKY_MAX_INTENTS) revert SKY_MaxIntentsReached();
 
         uint256 feeWei = (amountWei * feeBps) / SKY_BPS_DENOM;
+        if (msg.value < feeWei) revert SKY_InsufficientFee();
+        if (msg.value > 0) {
+            treasuryBalance += msg.value;
+            emit TreasuryTopped(msg.value, msg.sender, block.number);
+        }
+
+        intentCounter++;
+        intentId = intentCounter;
+        intents[intentId] = AgentIntent({
+            controller: msg.sender,
+            side: side,
+            amountWei: amountWei,
+            limitPriceWei: limitPriceWei,
+            executedAmountWei: 0,
+            symbolHash: symbolHash,
+            atBlock: block.number,
+            executed: false,
+            cancelled: false
+        });
+        _intentIdsByController[msg.sender].push(intentId);
+        _intentIdsBySymbol[symbolHash].push(intentId);
+        _allIntentIds.push(intentId);
+        emit AgentIntentSubmitted(intentId, msg.sender, side, amountWei, limitPriceWei, symbolHash, block.number);
+        return intentId;
+    }
+
+    function executeIntent(uint256 intentId, uint256 executedAmountWei, uint256 avgPriceWei) external onlyKeeper whenNotPaused nonReentrant {
+        AgentIntent storage intent = intents[intentId];
+        if (intent.atBlock == 0) revert SKY_IntentNotFound();
+        if (intent.executed) revert SKY_IntentAlreadyExecuted();
+        if (intent.cancelled) revert SKY_IntentCancelled();
+        if (executedAmountWei == 0 || executedAmountWei > intent.amountWei) revert SKY_AmountOutOfBounds();
+
+        intent.executedAmountWei = executedAmountWei;
+        intent.executed = true;
+        _executionByIntentId[intentId] = ExecutionRecord({
+            intentId: intentId,
+            keeper: msg.sender,
+            executedAmountWei: executedAmountWei,
+            avgPriceWei: avgPriceWei,
+            atBlock: block.number
+        });
+        _executionBlockOrder.push(intentId);
+        emit IntentExecuted(intentId, msg.sender, executedAmountWei, avgPriceWei, block.number);
+    }
+
+    function cancelIntent(uint256 intentId) external {
+        AgentIntent storage intent = intents[intentId];
+        if (intent.atBlock == 0) revert SKY_IntentNotFound();
+        if (intent.executed) revert SKY_IntentAlreadyExecuted();
+        if (intent.cancelled) revert SKY_IntentCancelled();
+        if (msg.sender != intent.controller && msg.sender != owner()) revert SKY_NotController();
+        intent.cancelled = true;
+        emit IntentCancelled(intentId, msg.sender, block.number);
+    }
+
+    function getIntent(uint256 intentId) external view returns (
+        address controller,
+        uint8 side,
+        uint256 amountWei,
+        uint256 limitPriceWei,
+        uint256 executedAmountWei,
+        bytes32 symbolHash,
+        uint256 atBlock,
+        bool executed,
+        bool cancelled
+    ) {
+        AgentIntent storage i = intents[intentId];
+        if (i.atBlock == 0) revert SKY_IntentNotFound();
+        return (i.controller, i.side, i.amountWei, i.limitPriceWei, i.executedAmountWei, i.symbolHash, i.atBlock, i.executed, i.cancelled);
+    }
+
+    function intentCount() external view returns (uint256) {
+        return _allIntentIds.length;
+    }
+
+    function getIntentIdAt(uint256 index) external view returns (uint256) {
+        if (index >= _allIntentIds.length) revert SKY_IntentNotFound();
+        return _allIntentIds[index];
+    }
+
+    function getIntentIdsByController(address controller) external view returns (uint256[] memory) {
+        return _intentIdsByController[controller];
+    }
+
