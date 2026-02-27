@@ -253,3 +253,88 @@ contract Skylar is ReentrancyGuard, Ownable {
         return _intentIdsByController[controller];
     }
 
+    function withdrawTreasury(address to, uint256 amountWei) external onlyOwner nonReentrant {
+        if (to == address(0)) revert SKY_ZeroAddress();
+        if (amountWei == 0) revert SKY_ZeroAmount();
+        if (amountWei > treasuryBalance) revert SKY_TransferFailed();
+        treasuryBalance -= amountWei;
+        (bool ok,) = payable(to).call{value: amountWei}("");
+        if (!ok) revert SKY_TransferFailed();
+        emit TreasuryWithdrawn(to, amountWei);
+    }
+
+    receive() external payable {
+        if (msg.value > 0) {
+            treasuryBalance += msg.value;
+            emit TreasuryTopped(msg.value, msg.sender, block.number);
+        }
+    }
+
+    function submitIntentBatch(
+        uint8[] calldata sides,
+        uint256[] calldata amountsWei,
+        uint256[] calldata limitPricesWei,
+        bytes32[] calldata symbolHashes
+    ) external payable onlyController whenNotPaused returns (uint256[] memory intentIds) {
+        uint256 n = sides.length;
+        if (n == 0 || amountsWei.length != n || limitPricesWei.length != n || symbolHashes.length != n) revert SKY_BoundsInvalid();
+        if (_allIntentIds.length + n > SKY_MAX_INTENTS) revert SKY_MaxIntentsReached();
+
+        uint256 totalFee = 0;
+        for (uint256 i = 0; i < n; i++) {
+            if (amountsWei[i] < minExecutionWei || amountsWei[i] > maxExecutionWei) revert SKY_AmountOutOfBounds();
+            totalFee += (amountsWei[i] * feeBps) / SKY_BPS_DENOM;
+        }
+        if (msg.value < totalFee) revert SKY_InsufficientFee();
+        if (msg.value > 0) {
+            treasuryBalance += msg.value;
+            emit TreasuryTopped(msg.value, msg.sender, block.number);
+        }
+
+        intentIds = new uint256[](n);
+        for (uint256 i = 0; i < n; i++) {
+            if (sides[i] != SKY_SIDE_BUY && sides[i] != SKY_SIDE_SELL) revert SKY_InvalidSide();
+            intentCounter++;
+            uint256 intentId = intentCounter;
+            intents[intentId] = AgentIntent({
+                controller: msg.sender,
+                side: sides[i],
+                amountWei: amountsWei[i],
+                limitPriceWei: limitPricesWei[i],
+                executedAmountWei: 0,
+                symbolHash: symbolHashes[i],
+                atBlock: block.number,
+                executed: false,
+                cancelled: false
+            });
+            _intentIdsByController[msg.sender].push(intentId);
+            _intentIdsBySymbol[symbolHashes[i]].push(intentId);
+            _allIntentIds.push(intentId);
+            intentIds[i] = intentId;
+            emit AgentIntentSubmitted(intentId, msg.sender, sides[i], amountsWei[i], limitPricesWei[i], symbolHashes[i], block.number);
+        }
+        return intentIds;
+    }
+
+    function getConfig() external view returns (
+        address controller,
+        address keeper,
+        address treasury,
+        uint256 feeBpsVal,
+        uint256 minWei,
+        uint256 maxWei,
+        bool paused,
+        uint256 deployBlockNum
+    ) {
+        return (skyController, skyKeeper, skyTreasury, feeBps, minExecutionWei, maxExecutionWei, skyPaused, deployBlock);
+    }
+
+    function getRecentIntentIds(uint256 limit) external view returns (uint256[] memory ids) {
+        uint256 total = _allIntentIds.length;
+        if (limit > total) limit = total;
+        if (limit == 0) return new uint256[](0);
+        ids = new uint256[](limit);
+        for (uint256 i = 0; i < limit; i++) {
+            ids[i] = _allIntentIds[total - 1 - i];
+        }
+        return ids;
