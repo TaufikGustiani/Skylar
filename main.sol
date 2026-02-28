@@ -1018,3 +1018,88 @@ contract Skylar is ReentrancyGuard, Ownable {
     }
 
     /// @notice Minimum execution amount in wei (config).
+    function minWei() external view returns (uint256) {
+        return minExecutionWei;
+    }
+
+    /// @notice Maximum execution amount in wei (config).
+    function maxWei() external view returns (uint256) {
+        return maxExecutionWei;
+    }
+
+    /// @notice Fee in basis points (config).
+    function feeBasisPoints() external view returns (uint256) {
+        return feeBps;
+    }
+
+    /// @notice Deployment block number.
+    function genesisBlock() external view returns (uint256) {
+        return deployBlock;
+    }
+
+    /// @notice Domain hash for agent namespace.
+    function agentDomainHash() external view returns (bytes32) {
+        return agentDomain;
+    }
+
+    /// @notice Whether the contract is paused.
+    function paused() external view returns (bool) {
+        return skyPaused;
+    }
+
+    /// @notice Treasury balance in wei.
+    function treasuryBalanceWei() external view returns (uint256) {
+        return treasuryBalance;
+    }
+
+    /// @notice Intent counter (next intent id will be intentCounter + 1).
+    function nextIntentId() external view returns (uint256) {
+        return intentCounter + 1;
+    }
+
+    /// @notice Get intent ids for controller in index range.
+    function getControllerIntentIdsRange(address controller, uint256 fromIndex, uint256 toIndex) external view returns (uint256[] memory ids) {
+        uint256[] storage arr = _intentIdsByController[controller];
+        uint256 n = arr.length;
+        if (fromIndex >= n) return new uint256[](0);
+        if (toIndex >= n) toIndex = n - 1;
+        if (fromIndex > toIndex) return new uint256[](0);
+        uint256 len = toIndex - fromIndex + 1;
+        ids = new uint256[](len);
+        for (uint256 i = 0; i < len; i++) {
+            ids[i] = arr[fromIndex + i];
+        }
+        return ids;
+    }
+
+    /// @notice Get intent ids for symbol in index range.
+    function getSymbolIntentIdsRange(bytes32 symbolHash, uint256 fromIndex, uint256 toIndex) external view returns (uint256[] memory ids) {
+        uint256[] storage arr = _intentIdsBySymbol[symbolHash];
+        uint256 n = arr.length;
+        if (fromIndex >= n) return new uint256[](0);
+        if (toIndex >= n) toIndex = n - 1;
+        if (fromIndex > toIndex) return new uint256[](0);
+        uint256 len = toIndex - fromIndex + 1;
+        ids = new uint256[](len);
+        for (uint256 i = 0; i < len; i++) {
+            ids[i] = arr[fromIndex + i];
+        }
+        return ids;
+    }
+
+    /// @notice Total number of executions recorded.
+    function totalExecutions() external view returns (uint256) {
+        return _executionBlockOrder.length;
+    }
+
+    /// @notice Check if intent exists.
+    function intentExists(uint256 intentId) external view returns (bool) {
+        return intents[intentId].atBlock != 0;
+    }
+
+    /// @notice Check if intent was executed.
+    function intentWasExecuted(uint256 intentId) external view returns (bool) {
+        return intents[intentId].executed;
+    }
+
+    /// @notice Check if intent was cancelled.
