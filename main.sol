@@ -933,3 +933,88 @@ contract Skylar is ReentrancyGuard, Ownable {
         return SKY_MAX_INTENTS;
     }
 
+    function sideBuy() external pure returns (uint256) {
+        return SKY_SIDE_BUY;
+    }
+
+    function sideSell() external pure returns (uint256) {
+        return SKY_SIDE_SELL;
+    }
+
+    /// @notice Check whether an intent can be executed (exists, not executed, not cancelled).
+    function canExecute(uint256 intentId) external view returns (bool) {
+        AgentIntent storage i0 = intents[intentId];
+        return i0.atBlock != 0 && !i0.executed && !i0.cancelled;
+    }
+
+    /// @notice Check whether the sender can cancel the intent.
+    function canCancel(uint256 intentId, address sender) external view returns (bool) {
+        AgentIntent storage i0 = intents[intentId];
+        if (i0.atBlock == 0 || i0.executed || i0.cancelled) return false;
+        return sender == i0.controller || sender == owner();
+    }
+
+    function intentBlockNumber(uint256 intentId) external view returns (uint256) {
+        return intents[intentId].atBlock;
+    }
+
+    function executionBlockNumber(uint256 intentId) external view returns (uint256) {
+        ExecutionRecord storage r = _executionByIntentId[intentId];
+        return r.atBlock;
+    }
+
+    function keeperOfExecution(uint256 intentId) external view returns (address) {
+        return _executionByIntentId[intentId].keeper;
+    }
+
+    function executedAmountOf(uint256 intentId) external view returns (uint256) {
+        return _executionByIntentId[intentId].executedAmountWei;
+    }
+
+    function avgPriceOfExecution(uint256 intentId) external view returns (uint256) {
+        return _executionByIntentId[intentId].avgPriceWei;
+    }
+
+    /// @notice Returns summary stats for dashboard: total intents, executed, cancelled, pending, volumes, treasury.
+    function stats() external view returns (
+        uint256 totalIntents,
+        uint256 executedIntents,
+        uint256 cancelledIntents,
+        uint256 pendingIntents,
+        uint256 totalVolumeSubmittedWei,
+        uint256 totalVolumeExecutedWei,
+        uint256 treasuryBalWei
+    ) {
+        totalIntents = _allIntentIds.length;
+        for (uint256 i = 0; i < totalIntents; i++) {
+            AgentIntent storage i0 = intents[_allIntentIds[i]];
+            totalVolumeSubmittedWei += i0.amountWei;
+            if (i0.executed) {
+                executedIntents++;
+                totalVolumeExecutedWei += i0.executedAmountWei;
+            } else if (i0.cancelled) cancelledIntents++;
+            else pendingIntents++;
+        }
+        treasuryBalWei = treasuryBalance;
+        return (totalIntents, executedIntents, cancelledIntents, pendingIntents, totalVolumeSubmittedWei, totalVolumeExecutedWei, treasuryBalWei);
+    }
+
+    /// @notice Returns controller address and number of intents for that controller.
+    function controllerInfo(address controller) external view returns (uint256 intentCountForController) {
+        return _intentIdsByController[controller].length;
+    }
+
+    /// @notice Returns symbol hash and number of intents for that symbol.
+    function symbolInfo(bytes32 symbolHash) external view returns (uint256 intentCountForSymbol) {
+        return _intentIdsBySymbol[symbolHash].length;
+    }
+
+    function allIntentIdsLength() external view returns (uint256) {
+        return _allIntentIds.length;
+    }
+
+    function executionOrderLength() external view returns (uint256) {
+        return _executionBlockOrder.length;
+    }
+
+    /// @notice Minimum execution amount in wei (config).
