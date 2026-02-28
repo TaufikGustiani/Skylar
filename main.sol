@@ -763,3 +763,88 @@ contract Skylar is ReentrancyGuard, Ownable {
     function getExecutionIntentIdAt(uint256 index) external view returns (uint256) {
         if (index >= _executionBlockOrder.length) revert SKY_IntentNotFound();
         return _executionBlockOrder[index];
+    }
+
+    function buyIntentCount() external view returns (uint256 count) {
+        for (uint256 i = 0; i < _allIntentIds.length; i++) {
+            if (intents[_allIntentIds[i]].side == SKY_SIDE_BUY) count++;
+        }
+        return count;
+    }
+
+    function sellIntentCount() external view returns (uint256 count) {
+        for (uint256 i = 0; i < _allIntentIds.length; i++) {
+            if (intents[_allIntentIds[i]].side == SKY_SIDE_SELL) count++;
+        }
+        return count;
+    }
+
+    function executedIntentCountForController(address controller) external view returns (uint256 count) {
+        uint256[] storage ids = _intentIdsByController[controller];
+        for (uint256 i = 0; i < ids.length; i++) {
+            if (intents[ids[i]].executed) count++;
+        }
+        return count;
+    }
+
+    function volumeExecutedForController(address controller) external view returns (uint256 volumeWei) {
+        uint256[] storage ids = _intentIdsByController[controller];
+        for (uint256 i = 0; i < ids.length; i++) {
+            volumeWei += intents[ids[i]].executedAmountWei;
+        }
+        return volumeWei;
+    }
+
+    function getIntentAtBlock(uint256 intentId) external view returns (uint256) {
+        AgentIntent storage i0 = intents[intentId];
+        if (i0.atBlock == 0) revert SKY_IntentNotFound();
+        return i0.atBlock;
+    }
+
+    function getIntentController(uint256 intentId) external view returns (address) {
+        AgentIntent storage i0 = intents[intentId];
+        if (i0.atBlock == 0) revert SKY_IntentNotFound();
+        return i0.controller;
+    }
+
+    function getIntentAmountWei(uint256 intentId) external view returns (uint256) {
+        AgentIntent storage i0 = intents[intentId];
+        if (i0.atBlock == 0) revert SKY_IntentNotFound();
+        return i0.amountWei;
+    }
+
+    function getIntentExecutedAmountWei(uint256 intentId) external view returns (uint256) {
+        AgentIntent storage i0 = intents[intentId];
+        if (i0.atBlock == 0) revert SKY_IntentNotFound();
+        return i0.executedAmountWei;
+    }
+
+    function getIntentSide(uint256 intentId) external view returns (uint8) {
+        AgentIntent storage i0 = intents[intentId];
+        if (i0.atBlock == 0) revert SKY_IntentNotFound();
+        return i0.side;
+    }
+
+    function getIntentExecuted(uint256 intentId) external view returns (bool) {
+        AgentIntent storage i0 = intents[intentId];
+        if (i0.atBlock == 0) revert SKY_IntentNotFound();
+        return i0.executed;
+    }
+
+    function getIntentCancelled(uint256 intentId) external view returns (bool) {
+        AgentIntent storage i0 = intents[intentId];
+        if (i0.atBlock == 0) revert SKY_IntentNotFound();
+        return i0.cancelled;
+    }
+
+    /// @notice Fetch execution records for a list of intent ids.
+    function getExecutionsBulk(uint256[] calldata intentIds) external view returns (
+        address[] memory keepers,
+        uint256[] memory executedAmountsWei,
+        uint256[] memory avgPricesWei,
+        uint256[] memory atBlocks
+    ) {
+        uint256 n = intentIds.length;
+        if (n > 200) revert SKY_BoundsInvalid();
+        keepers = new address[](n);
+        executedAmountsWei = new uint256[](n);
