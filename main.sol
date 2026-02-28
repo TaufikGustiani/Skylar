@@ -848,3 +848,88 @@ contract Skylar is ReentrancyGuard, Ownable {
         if (n > 200) revert SKY_BoundsInvalid();
         keepers = new address[](n);
         executedAmountsWei = new uint256[](n);
+        avgPricesWei = new uint256[](n);
+        atBlocks = new uint256[](n);
+        for (uint256 i = 0; i < n; i++) {
+            ExecutionRecord storage r = _executionByIntentId[intentIds[i]];
+            keepers[i] = r.keeper;
+            executedAmountsWei[i] = r.executedAmountWei;
+            avgPricesWei[i] = r.avgPriceWei;
+            atBlocks[i] = r.atBlock;
+        }
+        return (keepers, executedAmountsWei, avgPricesWei, atBlocks);
+    }
+
+    /// @notice Returns execution order slice [fromIndex, toIndex] of intent ids that were executed.
+    function getExecutionOrderRange(uint256 fromIndex, uint256 toIndex) external view returns (uint256[] memory intentIds) {
+        uint256 n = _executionBlockOrder.length;
+        if (fromIndex >= n) return new uint256[](0);
+        if (toIndex >= n) toIndex = n - 1;
+        if (fromIndex > toIndex) return new uint256[](0);
+        uint256 len = toIndex - fromIndex + 1;
+        intentIds = new uint256[](len);
+        for (uint256 i = 0; i < len; i++) {
+            intentIds[i] = _executionBlockOrder[fromIndex + i];
+        }
+        return intentIds;
+    }
+
+    function totalIntentVolumeWei() external view returns (uint256 total) {
+        for (uint256 i = 0; i < _allIntentIds.length; i++) {
+            total += intents[_allIntentIds[i]].amountWei;
+        }
+        return total;
+    }
+
+    function totalPendingVolumeWei() external view returns (uint256 total) {
+        for (uint256 i = 0; i < _allIntentIds.length; i++) {
+            AgentIntent storage i0 = intents[_allIntentIds[i]];
+            if (!i0.executed && !i0.cancelled) total += i0.amountWei;
+        }
+        return total;
+    }
+
+    function fillRateBps() external view returns (uint256 bps) {
+        uint256 totalAmt = 0;
+        uint256 executedAmt = 0;
+        for (uint256 i = 0; i < _allIntentIds.length; i++) {
+            AgentIntent storage i0 = intents[_allIntentIds[i]];
+            totalAmt += i0.amountWei;
+            executedAmt += i0.executedAmountWei;
+        }
+        if (totalAmt == 0) return 0;
+        return (executedAmt * SKY_BPS_DENOM) / totalAmt;
+    }
+
+    function cancelRateBps() external view returns (uint256 bps) {
+        uint256 n = _allIntentIds.length;
+        if (n == 0) return 0;
+        uint256 c = 0;
+        for (uint256 i = 0; i < n; i++) {
+            if (intents[_allIntentIds[i]].cancelled) c++;
+        }
+        return (c * SKY_BPS_DENOM) / n;
+    }
+
+    function executionRateBps() external view returns (uint256 bps) {
+        uint256 n = _allIntentIds.length;
+        if (n == 0) return 0;
+        uint256 e = 0;
+        for (uint256 i = 0; i < n; i++) {
+            if (intents[_allIntentIds[i]].executed) e++;
+        }
+        return (e * SKY_BPS_DENOM) / n;
+    }
+
+    function agentSeed() external pure returns (uint256) {
+        return SKY_AGENT_SEED;
+    }
+
+    function bpsDenom() external pure returns (uint256) {
+        return SKY_BPS_DENOM;
+    }
+
+    function maxIntentsCap() external pure returns (uint256) {
+        return SKY_MAX_INTENTS;
+    }
+
