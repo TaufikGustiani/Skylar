@@ -593,3 +593,88 @@ contract Skylar is ReentrancyGuard, Ownable {
             uint256 id = _executionBlockOrder[n - 1 - i];
             intentIds[i] = id;
             ExecutionRecord storage r = _executionByIntentId[id];
+            keepers[i] = r.keeper;
+            amountsWei[i] = r.executedAmountWei;
+            pricesWei[i] = r.avgPriceWei;
+            atBlocks[i] = r.atBlock;
+        }
+        return (intentIds, keepers, amountsWei, pricesWei, atBlocks);
+    }
+
+    function executionCount() external view returns (uint256) {
+        return _executionBlockOrder.length;
+    }
+
+    function getController() external view returns (address) {
+        return skyController;
+    }
+
+    function getKeeper() external view returns (address) {
+        return skyKeeper;
+    }
+
+    function getTreasury() external view returns (address) {
+        return skyTreasury;
+    }
+
+    function getMinExecutionWei() external view returns (uint256) {
+        return minExecutionWei;
+    }
+
+    function getMaxExecutionWei() external view returns (uint256) {
+        return maxExecutionWei;
+    }
+
+    function getFeeBps() external view returns (uint256) {
+        return feeBps;
+    }
+
+    function isPaused() external view returns (bool) {
+        return skyPaused;
+    }
+
+    function hasIntent(uint256 intentId) external view returns (bool) {
+        return intents[intentId].atBlock != 0;
+    }
+
+    function getPendingIntentIds() external view returns (uint256[] memory ids) {
+        uint256 n = _allIntentIds.length;
+        uint256 pendingCount = 0;
+        for (uint256 i = 0; i < n; i++) {
+            if (!intents[_allIntentIds[i]].executed && !intents[_allIntentIds[i]].cancelled) pendingCount++;
+        }
+        ids = new uint256[](pendingCount);
+        uint256 j = 0;
+        for (uint256 i = 0; i < n; i++) {
+            uint256 id = _allIntentIds[i];
+            if (!intents[id].executed && !intents[id].cancelled) {
+                ids[j] = id;
+                j++;
+            }
+        }
+        return ids;
+    }
+
+    function getIntentIdsInBlockRange(uint256 fromBlock, uint256 toBlock) external view returns (uint256[] memory ids) {
+        uint256 n = _allIntentIds.length;
+        uint256 count = 0;
+        for (uint256 i = 0; i < n; i++) {
+            uint256 b = intents[_allIntentIds[i]].atBlock;
+            if (b >= fromBlock && b <= toBlock) count++;
+        }
+        ids = new uint256[](count);
+        count = 0;
+        for (uint256 i = 0; i < n; i++) {
+            uint256 id = _allIntentIds[i];
+            uint256 b = intents[id].atBlock;
+            if (b >= fromBlock && b <= toBlock) {
+                ids[count] = id;
+                count++;
+            }
+        }
+        return ids;
+    }
+
+    function averageExecutionPrice(uint256 intentId) external view returns (uint256) {
+        ExecutionRecord storage r = _executionByIntentId[intentId];
+        if (r.atBlock == 0) return 0;
