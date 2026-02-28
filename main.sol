@@ -1103,3 +1103,88 @@ contract Skylar is ReentrancyGuard, Ownable {
     }
 
     /// @notice Check if intent was cancelled.
+    function intentWasCancelled(uint256 intentId) external view returns (bool) {
+        return intents[intentId].cancelled;
+    }
+
+    /// @notice Returns the keeper address that executed the given intent, or zero if not executed.
+    function executionKeeper(uint256 intentId) external view returns (address) {
+        return _executionByIntentId[intentId].keeper;
+    }
+
+    /// @notice Returns executed amount for intent, or zero if not executed.
+    function executionAmount(uint256 intentId) external view returns (uint256) {
+        return _executionByIntentId[intentId].executedAmountWei;
+    }
+
+    /// @notice Returns average price at execution for intent, or zero if not executed.
+    function executionAvgPrice(uint256 intentId) external view returns (uint256) {
+        return _executionByIntentId[intentId].avgPriceWei;
+    }
+
+    /// @notice Returns block at which intent was executed, or zero if not executed.
+    function executionBlock(uint256 intentId) external view returns (uint256) {
+        return _executionByIntentId[intentId].atBlock;
+    }
+
+    /// @notice Full config for frontend: all immutable and mutable config in one call.
+    function fullConfig() external view returns (
+        address controllerAddr,
+        address keeperAddr,
+        address treasuryAddr,
+        uint256 feeBpsVal,
+        uint256 minExecutionWeiVal,
+        uint256 maxExecutionWeiVal,
+        bool pausedVal,
+        uint256 deployBlockVal,
+        bytes32 domainVal
+    ) {
+        return (
+            skyController,
+            skyKeeper,
+            skyTreasury,
+            feeBps,
+            minExecutionWei,
+            maxExecutionWei,
+            skyPaused,
+            deployBlock,
+            agentDomain
+        );
+    }
+
+    /// @notice Returns the intent id at the given global index.
+    function intentIdAt(uint256 index) external view returns (uint256) {
+        if (index >= _allIntentIds.length) revert SKY_IntentNotFound();
+        return _allIntentIds[index];
+    }
+
+    /// @notice Returns the execution intent id at the given execution index.
+    function executionIntentIdAt(uint256 index) external view returns (uint256) {
+        if (index >= _executionBlockOrder.length) revert SKY_IntentNotFound();
+        return _executionBlockOrder[index];
+    }
+
+    /// @notice Batch fetch intent ids for multiple controllers (each controller's first N ids). Single controller: pass one-element arrays.
+    function getIntentIdsByControllers(address[] calldata controllers, uint256 limitPerController) external view returns (uint256[][] memory result) {
+        uint256 n = controllers.length;
+        if (n > 50) revert SKY_BoundsInvalid();
+        result = new uint256[][](n);
+        for (uint256 c = 0; c < n; c++) {
+            uint256[] storage arr = _intentIdsByController[controllers[c]];
+            uint256 len = arr.length;
+            uint256 take = limitPerController > len ? len : limitPerController;
+            if (take == 0) {
+                result[c] = new uint256[](0);
+                continue;
+            }
+            result[c] = new uint256[](take);
+            for (uint256 i = 0; i < take; i++) {
+                result[c][i] = arr[len - 1 - i];
+            }
+        }
+        return result;
+    }
+
+    /// @notice Single intent full view for one id.
+    function getIntentFull(uint256 intentId) external view returns (
+        address controller,
