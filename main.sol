@@ -678,3 +678,88 @@ contract Skylar is ReentrancyGuard, Ownable {
     function averageExecutionPrice(uint256 intentId) external view returns (uint256) {
         ExecutionRecord storage r = _executionByIntentId[intentId];
         if (r.atBlock == 0) return 0;
+        return r.avgPriceWei;
+    }
+
+    function totalExecutedValueWei() external view returns (uint256 total) {
+        for (uint256 i = 0; i < _executionBlockOrder.length; i++) {
+            ExecutionRecord storage r = _executionByIntentId[_executionBlockOrder[i]];
+            total += r.executedAmountWei * r.avgPriceWei;
+        }
+        return total;
+    }
+
+    /// @notice Returns last N intent ids in reverse chronological order (newest first).
+    function getLastNIntentIds(uint256 n) external view returns (uint256[] memory ids) {
+        uint256 total = _allIntentIds.length;
+        if (total == 0) return new uint256[](0);
+        if (n > total) n = total;
+        ids = new uint256[](n);
+        for (uint256 i = 0; i < n; i++) {
+            ids[i] = _allIntentIds[total - 1 - i];
+        }
+        return ids;
+    }
+
+    /// @notice Returns intent data for the last N intents (controllers, sides, amounts, blocks).
+    function getLastNIntentsSummary(uint256 n) external view returns (
+        uint256[] memory ids,
+        address[] memory controllers,
+        uint8[] memory sides,
+        uint256[] memory amountsWei,
+        uint256[] memory atBlocks
+    ) {
+        uint256 total = _allIntentIds.length;
+        if (total == 0) return (new uint256[](0), new address[](0), new uint8[](0), new uint256[](0), new uint256[](0));
+        if (n > total) n = total;
+        ids = new uint256[](n);
+        controllers = new address[](n);
+        sides = new uint8[](n);
+        amountsWei = new uint256[](n);
+        atBlocks = new uint256[](n);
+        for (uint256 i = 0; i < n; i++) {
+            uint256 id = _allIntentIds[total - 1 - i];
+            ids[i] = id;
+            controllers[i] = intents[id].controller;
+            sides[i] = intents[id].side;
+            amountsWei[i] = intents[id].amountWei;
+            atBlocks[i] = intents[id].atBlock;
+        }
+        return (ids, controllers, sides, amountsWei, atBlocks);
+    }
+
+    function isController(address account) external view returns (bool) {
+        return account == skyController || account == owner();
+    }
+
+    function isKeeper(address account) external view returns (bool) {
+        return account == skyKeeper || account == owner();
+    }
+
+    function computeFeeWei(uint256 amountWei) external view returns (uint256 feeWei) {
+        return (amountWei * feeBps) / SKY_BPS_DENOM;
+    }
+
+    function validateAmountBounds(uint256 amountWei) external view returns (bool) {
+        return amountWei >= minExecutionWei && amountWei <= maxExecutionWei;
+    }
+
+    function getIntentSymbolHash(uint256 intentId) external view returns (bytes32) {
+        AgentIntent storage i0 = intents[intentId];
+        if (i0.atBlock == 0) revert SKY_IntentNotFound();
+        return i0.symbolHash;
+    }
+
+    function getIntentLimitPrice(uint256 intentId) external view returns (uint256) {
+        AgentIntent storage i0 = intents[intentId];
+        if (i0.atBlock == 0) revert SKY_IntentNotFound();
+        return i0.limitPriceWei;
+    }
+
+    function executionBlockOrderLength() external view returns (uint256) {
+        return _executionBlockOrder.length;
+    }
+
+    function getExecutionIntentIdAt(uint256 index) external view returns (uint256) {
+        if (index >= _executionBlockOrder.length) revert SKY_IntentNotFound();
+        return _executionBlockOrder[index];
